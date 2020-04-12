@@ -14,15 +14,21 @@ from time import process_time
 
 
 def init():
+    dataset_file = './creditcard.csv'
+    class_column = 'Class'
+    positive = 1
+    negative = 0
     start = process_time()
-    data = pd.read_csv('./creditcard.csv')
+    data = pd.read_csv(dataset_file)
     # SVM only accepts numerical values. 
     # Therefore, we will transform the categories M and B into
     # values 1 and -1 (or -1 and 1), respectively.
-    data['Class'] = data['Class'].map({0:-1.0, 1:1.0})
-    # print(data)
-    Y = data.loc[:, 'Class']
-    X = data.iloc[:, :-1]
+    data[class_column] = data[class_column].map({negative:-1.0, positive:1.0})
+    
+    Y = data.loc[:, class_column]
+    cols = data.columns.tolist()
+    cols.remove(class_column)
+    X = data.loc[:, cols]
     # normalize the features using MinMaxScalar from
     # sklearn.preprocessing
     X_normalized = MinMaxScaler().fit_transform(X.values)
@@ -42,11 +48,13 @@ def init():
     print("weights are: {}".format(W))
     y_test_predicted = np.array([])
 
+    stop = process_time()
+    print("time taken: {}".format(stop-start))
+
     for i in range(X_test.shape[0]):
         yp = np.sign(np.dot(W, X_test.to_numpy()[i])) #model
         y_test_predicted = np.append(y_test_predicted, yp)
-    stop = process_time()
-    print("time taken: {}".format(stop-start))
+    
     print("accuracy on test dataset: {}".format(accuracy_score(y_test.to_numpy(), y_test_predicted)))
     print("recall on test dataset: {}".format(recall_score(y_test.to_numpy(), y_test_predicted)))
     print("precision on test dataset: {}".format(recall_score(y_test.to_numpy(), y_test_predicted)))
