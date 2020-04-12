@@ -2,7 +2,10 @@
 # Written for COIS-4350H
 # Last Modified Date: 
 # Purpose: 
+# References: https://github.com/qandeelabbassi/python-svm-sgd/blob/master/svm.py
+#             https://towardsdatascience.com/svm-implementation-from-scratch-python-2db2fc52e5c2
 
+import sys
 import numpy as np
 import pandas as pd
 import statsmodels.api as sm
@@ -14,42 +17,51 @@ from time import process_time
 
 
 def init():
-    start = process_time()
-    data = pd.read_csv('./creditcard.csv')
-    # SVM only accepts numerical values. 
-    # Therefore, we will transform the categories M and B into
-    # values 1 and -1 (or -1 and 1), respectively.
-    data['Class'] = data['Class'].map({0:-1.0, 1:1.0})
-    # print(data)
-    Y = data.loc[:, 'Class']
-    X = data.iloc[:, :-1]
-    # normalize the features using MinMaxScalar from
-    # sklearn.preprocessing
-    X_normalized = MinMaxScaler().fit_transform(X.values)
-    X = pd.DataFrame(X_normalized)
+    if len(sys.argv) == 5:
+        data_file = sys.argv[1]
+        class_label = sys.argv[2]
 
-    # first insert 1 in every row for intercept b
-    X.insert(loc=len(X.columns), column='intercept', value=1)
-    # test_size is the portion of data that will go into test set
-    # random_state is the seed used by the random number generator
-    print("splitting dataset into train and test sets...")
-    X_train, X_test, y_train, y_test = tts(X, Y, test_size=0.2, random_state=42)
+        positive_case = sys.argv[3]
+        negative_case = sys.argv[4]
 
-    # train the model
-    print("training started...")
-    W = sgd(X_train.to_numpy(), y_train.to_numpy())
-    print("training finished.")
-    print("weights are: {}".format(W))
-    y_test_predicted = np.array([])
+        start = process_time()
+        data = pd.read_csv('./' + data_file)
+        # SVM only accepts numerical values. 
+        # Therefore, we will transform the categories M and B into
+        # values 1 and -1 (or -1 and 1), respectively.
+        data[class_label] = data[class_label].map({negative_case:-1.0, positive_case:1.0})
+        # print(data)
+        Y = data.loc[:, class_label]
+        X = data.iloc[:, :-1]
+        # normalize the features using MinMaxScalar from
+        # sklearn.preprocessing
+        X_normalized = MinMaxScaler().fit_transform(X.values)
+        X = pd.DataFrame(X_normalized)
 
-    for i in range(X_test.shape[0]):
-        yp = np.sign(np.dot(W, X_test.to_numpy()[i])) #model
-        y_test_predicted = np.append(y_test_predicted, yp)
-    stop = process_time()
-    print("time taken: {}".format(stop-start))
-    print("accuracy on test dataset: {}".format(accuracy_score(y_test.to_numpy(), y_test_predicted)))
-    print("recall on test dataset: {}".format(recall_score(y_test.to_numpy(), y_test_predicted)))
-    print("precision on test dataset: {}".format(recall_score(y_test.to_numpy(), y_test_predicted)))
+        # first insert 1 in every row for intercept b
+        X.insert(loc=len(X.columns), column='intercept', value=1)
+        # test_size is the portion of data that will go into test set
+        # random_state is the seed used by the random number generator
+        print("splitting dataset into train and test sets...")
+        X_train, X_test, y_train, y_test = tts(X, Y, test_size=0.2, random_state=42)
+
+        # train the model
+        print("training started...")
+        W = sgd(X_train.to_numpy(), y_train.to_numpy())
+        print("training finished.")
+        print("weights are: {}".format(W))
+        y_test_predicted = np.array([])
+
+        for i in range(X_test.shape[0]):
+            yp = np.sign(np.dot(W, X_test.to_numpy()[i])) #model
+            y_test_predicted = np.append(y_test_predicted, yp)
+        stop = process_time()
+        print("time taken: {}".format(stop-start))
+        print("accuracy on test dataset: {}".format(accuracy_score(y_test.to_numpy(), y_test_predicted)))
+        print("recall on test dataset: {}".format(recall_score(y_test.to_numpy(), y_test_predicted)))
+        print("precision on test dataset: {}".format(recall_score(y_test.to_numpy(), y_test_predicted)))
+    else:
+        print("***Incorrect arguments, proper format >> py ./svm.py {data filename} {class label} {positive class value} {negative class value}")
 
 def compute_cost(W, X, Y):
     # calculate hinge loss
