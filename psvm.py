@@ -10,14 +10,16 @@ from sklearn.preprocessing import MinMaxScaler
 from sklearn.model_selection import train_test_split as tts
 from sklearn.metrics import accuracy_score, recall_score 
 from sklearn.utils import shuffle
+from time import process_time
 
 
 def init():
+    start = process_time()
     data = pd.read_csv('./creditcard.csv')
     # SVM only accepts numerical values. 
     # Therefore, we will transform the categories M and B into
     # values 1 and -1 (or -1 and 1), respectively.
-    data['Class'] = data['Class'].map({0:-1})
+    data['Class'] = data['Class'].map({0:-1.0, 1:1.0})
     # print(data)
     Y = data.loc[:, 'Class']
     X = data.iloc[:, :-1]
@@ -43,6 +45,8 @@ def init():
     for i in range(X_test.shape[0]):
         yp = np.sign(np.dot(W, X_test.to_numpy()[i])) #model
         y_test_predicted = np.append(y_test_predicted, yp)
+    stop = process_time()
+    print("time taken: {}".format(stop-start))
     print("accuracy on test dataset: {}".format(accuracy_score(y_test.to_numpy(), y_test_predicted)))
     print("recall on test dataset: {}".format(recall_score(y_test.to_numpy(), y_test_predicted)))
     print("precision on test dataset: {}".format(recall_score(y_test.to_numpy(), y_test_predicted)))
@@ -51,10 +55,7 @@ def compute_cost(W, X, Y):
     # calculate hinge loss
     N = X.shape[0]
     distances = 1 - Y * (np.dot(X, W))
-    print(*distances)
     distances[distances < 0] = 0  # equivalent to max(0, distance)
-    print(*distances)
-    print(np.sum(distances))
     hinge_loss = reg_strength * (np.sum(distances) / N)
     
     # calculate cost
