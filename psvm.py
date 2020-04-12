@@ -36,6 +36,8 @@ def init():
         data[class_label] = data[class_label].map({negative_case:-1.0, positive_case:1.0})
         # print(data)
         Y = data.loc[:, class_label]
+        cols = data.columns.tolist()
+        cols.remove(class_label)
         X = data.iloc[:, :-1]
         # normalize the features using MinMaxScalar from
         # sklearn.preprocessing
