@@ -10,7 +10,7 @@ import pandas as pd
 import statsmodels.api as sm
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.model_selection import train_test_split as tts
-from sklearn.metrics import accuracy_score, recall_score 
+from sklearn.metrics import accuracy_score, recall_score, precision_score 
 from sklearn.utils import shuffle
 from time import process_time
 from mpi4py import MPI
@@ -34,7 +34,7 @@ def init():
             # Therefore, we will transform the categories M and B into
             # values 1 and -1 (or -1 and 1), respectively.
             data[class_label] = data[class_label].map({negative_case:-1.0, positive_case:1.0})
-            # print(data)
+            
             Y = data.loc[:, class_label]
             cols = data.columns.tolist()
             cols.remove(class_label)
@@ -62,6 +62,7 @@ def init():
             for i in range(len(X_train) % size - 1):
                 num_rows[i] += 1
 
+            final = np.zeros(num_cols)
 
         else:
             num_rows = None
@@ -69,13 +70,14 @@ def init():
             split_size = None
             X_train = None
             Y_train = None
-        
+            final = None
+        print(num_rows)
         num_rows = comm.bcast(num_rows, root=0)
         num_cols = comm.bcast(num_cols, root=0)
         split_size = [num_cols*x for x in num_rows]
 
         X_buf = np.empty((num_cols, num_rows[rank]))
-        Y_buf = np.empty((num_rows[rank],))
+        Y_buf = np.empty(num_rows[rank])
         
         X_displacements = [0] * size
 
@@ -90,24 +92,30 @@ def init():
         print(f"Hi from process: {rank}")
 
         # train the model
-        print("training started...")
+        print("Training started...")
         W = sgd(X_buf.transpose(), Y_buf)
-        print("training finished.")
-        print("weights are: {}".format(W))
+        print("Training finished.")
+        print(f"Weights are: {W}")
 
         #gather result vectors
+        comm.Reduce([W, MPI.DOUBLE], [final, MPI.DOUBLE], op = MPI.SUM, root=0)
 
         if rank == 0:
+            print(f"Final weights are: {W}")
             y_test_predicted = np.array([])
 
             for i in range(X_test.shape[0]):
-                yp = np.sign(np.dot(W, X_test.to_numpy()[i])) #model
+                yp = np.sign(np.dot(final, X_test.to_numpy()[i])) #model
                 y_test_predicted = np.append(y_test_predicted, yp)
             stop = process_time()
-            print("time taken: {}".format(stop-start))
-            print("accuracy on test dataset: {}".format(accuracy_score(Y_test.to_numpy(), y_test_predicted)))
-            print("recall on test dataset: {}".format(recall_score(Y_test.to_numpy(), y_test_predicted)))
-            print("precision on test dataset: {}".format(recall_score(Y_test.to_numpy(), y_test_predicted)))
+            accuracy = accuracy_score(Y_test.to_numpy(), y_test_predicted)
+            recall = recall_score(Y_test.to_numpy(), y_test_predicted)
+            precision = precision_score(Y_test.to_numpy(), y_test_predicted)
+            print(f"Time taken: {stop-start}")
+            print(f"Accuracy on test dataset: {accuracy}")
+            print(f"Recall on test dataset: {recall}")
+            print(f"Precision on test dataset: {precision}")
+            print(f"Area under Precision-Recall Curve: {auc(recall, precision)}")
     else: 
         print("***Incorrect arguments, proper format >> py ./psvm.py {data filename} {class label} {positive class value} {negative class value}")
 

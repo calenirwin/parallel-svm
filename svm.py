@@ -21,8 +21,8 @@ def init():
         data_file = sys.argv[1]
         class_label = sys.argv[2]
 
-        positive_case = sys.argv[3]
-        negative_case = sys.argv[4]
+        positive_case = int(sys.argv[3])
+        negative_case = int(sys.argv[4])
 
         start = process_time()
         data = pd.read_csv('./' + data_file)
@@ -30,8 +30,10 @@ def init():
         # Therefore, we will transform the categories M and B into
         # values 1 and -1 (or -1 and 1), respectively.
         data[class_label] = data[class_label].map({negative_case:-1.0, positive_case:1.0})
-        # print(data)
+        
         Y = data.loc[:, class_label]
+        cols = data.columns.tolist()
+        cols.remove(class_label)
         X = data.iloc[:, :-1]
         # normalize the features using MinMaxScalar from
         # sklearn.preprocessing
@@ -56,10 +58,10 @@ def init():
             yp = np.sign(np.dot(W, X_test.to_numpy()[i])) #model
             y_test_predicted = np.append(y_test_predicted, yp)
         stop = process_time()
-        print("time taken: {}".format(stop-start))
+        print(f"time taken: {stop-start}")
         print("accuracy on test dataset: {}".format(accuracy_score(y_test.to_numpy(), y_test_predicted)))
         print("recall on test dataset: {}".format(recall_score(y_test.to_numpy(), y_test_predicted)))
-        print("precision on test dataset: {}".format(recall_score(y_test.to_numpy(), y_test_predicted)))
+        print("precision on test dataset: {}".format(precision_score(y_test.to_numpy(), y_test_predicted)))
     else:
         print("***Incorrect arguments, proper format >> py ./svm.py {data filename} {class label} {positive class value} {negative class value}")
 
