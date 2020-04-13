@@ -27,34 +27,35 @@ def init():
         comm = MPI.COMM_WORLD
         size = comm.Get_size()
         rank = comm.Get_rank()
-
-        start = process_time()
-        data = pd.read_csv('./' + data_file)
-        # SVM only accepts numerical values. 
-        # Therefore, we will transform the categories M and B into
-        # values 1 and -1 (or -1 and 1), respectively.
-        data[class_label] = data[class_label].map({negative_case:-1.0, positive_case:1.0})
-        # print(data)
-        Y = data.loc[:, class_label]
-        cols = data.columns.tolist()
-        cols.remove(class_label)
-        X = data.iloc[:, :-1]
-        # normalize the features using MinMaxScalar from
-        # sklearn.preprocessing
-        X_normalized = MinMaxScaler().fit_transform(X.values)
-        X = pd.DataFrame(X_normalized)
-
-        # first insert 1 in every row for intercept b
-        X.insert(loc=len(X.columns), column='intercept', value=1)
-        # test_size is the portion of data that will go into test set
-        # random_state is the seed used by the random number generator
-        print("splitting dataset into train and test sets...")
-        X_train, X_test, y_train, y_test = tts(X, Y, test_size=0.2, random_state=42)
-
         if rank == 0:
-            X_train.to_numpy()
-            Y_train.to_numpy()
-            num_cols = len(X_train[0])
+            start = process_time()
+            data = pd.read_csv('./' + data_file)
+            # SVM only accepts numerical values. 
+            # Therefore, we will transform the categories M and B into
+            # values 1 and -1 (or -1 and 1), respectively.
+            data[class_label] = data[class_label].map({negative_case:-1.0, positive_case:1.0})
+            # print(data)
+            Y = data.loc[:, class_label]
+            cols = data.columns.tolist()
+            cols.remove(class_label)
+            X = data.iloc[:, :-1]
+            # normalize the features using MinMaxScalar from
+            # sklearn.preprocessing
+            X_normalized = MinMaxScaler().fit_transform(X.values)
+            X = pd.DataFrame(X_normalized)
+
+            # first insert 1 in every row for intercept b
+            X.insert(loc=len(X.columns), column='intercept', value=1)
+            # test_size is the portion of data that will go into test set
+            # random_state is the seed used by the random number generator
+            print("splitting dataset into train and test sets...")
+            X_train, X_test, Y_train, Y_test = tts(X, Y, test_size=0.2, random_state=42)
+
+        
+            X_train = X_train.to_numpy()
+            Y_train = Y_train.to_numpy()
+            print(type(X_train))
+            num_cols = X_train.shape[1]
             split_size = len(X_train) / size
             num_rows = [math.floor(split_size)] * size  # number of rows each process will receive
 
@@ -66,42 +67,47 @@ def init():
             num_rows = None
             num_cols = None
             split_size = None
+            X_train = None
+            Y_train = None
         
         num_rows = comm.bcast(num_rows, root=0)
         num_cols = comm.bcast(num_cols, root=0)
-        split_size = num_rows * num_cols
+        split_size = [num_cols*x for x in num_rows]
 
-        X_buf = np.empty((num_rows[rank], num_cols))
+        X_buf = np.empty((num_cols, num_rows[rank]))
         Y_buf = np.empty((num_rows[rank],))
         
         X_displacements = [0] * size
 
         for i in range(1, size):
-            X_displacements[i] = X_displacements[i-1] + input_buf[i-1]
+            X_displacements[i] = X_displacements[i-1] + split_size[i-1]
 
+        Y_displacements = [x/num_cols for x in X_displacements]
 
-        comm.Scatterv([X_train, split_size, X_displacements, MPI_DOUBLE], X_buf, root=0)
-        comm.Scatterv([Y_train, num_rows, X_displacements / num_cols, MPI_DOUBLE], Y_buf, root=0)
+        comm.Scatterv([X_train, split_size, X_displacements, MPI.DOUBLE], X_buf, root=0)
+        comm.Scatterv([Y_train, num_rows, Y_displacements, MPI.DOUBLE], Y_buf, root=0)
 
         print(f"Hi from process: {rank}")
-        print(X_buf)
-        print(Y_buf)
 
         # train the model
         print("training started...")
-        W = sgd(X_train.to_numpy(), y_train.to_numpy())
+        W = sgd(X_buf.transpose(), Y_buf)
         print("training finished.")
         print("weights are: {}".format(W))
-        y_test_predicted = np.array([])
 
-        for i in range(X_test.shape[0]):
-            yp = np.sign(np.dot(W, X_test.to_numpy()[i])) #model
-            y_test_predicted = np.append(y_test_predicted, yp)
-        stop = process_time()
-        print("time taken: {}".format(stop-start))
-        print("accuracy on test dataset: {}".format(accuracy_score(y_test.to_numpy(), y_test_predicted)))
-        print("recall on test dataset: {}".format(recall_score(y_test.to_numpy(), y_test_predicted)))
-        print("precision on test dataset: {}".format(recall_score(y_test.to_numpy(), y_test_predicted)))
+        #gather result vectors
+
+        if rank == 0:
+            y_test_predicted = np.array([])
+
+            for i in range(X_test.shape[0]):
+                yp = np.sign(np.dot(W, X_test.to_numpy()[i])) #model
+                y_test_predicted = np.append(y_test_predicted, yp)
+            stop = process_time()
+            print("time taken: {}".format(stop-start))
+            print("accuracy on test dataset: {}".format(accuracy_score(Y_test.to_numpy(), y_test_predicted)))
+            print("recall on test dataset: {}".format(recall_score(Y_test.to_numpy(), y_test_predicted)))
+            print("precision on test dataset: {}".format(recall_score(Y_test.to_numpy(), y_test_predicted)))
     else: 
         print("***Incorrect arguments, proper format >> py ./psvm.py {data filename} {class label} {positive class value} {negative class value}")
 
