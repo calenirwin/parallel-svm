@@ -1,19 +1,25 @@
 # Written by Calen Irwin & Ryland Willhans
 # Written for COIS-4350H
-# Last Modified Date: 
-# Purpose: 
+# Last Modified Date: 2020-04-13
+# Purpose: This program uses the MPI standard to parallelize a SVM classifier.
+#          It can handle large datasets
+# Instructions for running: *depending on your version of Python use 'python' instead of 'py'*
+#   To run with MPI    >> 'mpiexec -n 4 py -m mpi4py psvm.py {inputfile.csv} {class_label} {+ve class value} {-ve class value}'
+#   To run without MPI >> 'py psvm.py'
+# References: https://towardsdatascience.com/svm-implementation-from-scratch-python-2db2fc52e5c2
+#             https://github.com/qandeelabbassi/python-svm-sgd/blob/master/svm.py
 
-import sys
+import sys                                                      # library for accessing command line arguments
 import math
-import numpy as np
-import pandas as pd
-import statsmodels.api as sm
-from sklearn.preprocessing import MinMaxScaler
-from sklearn.model_selection import train_test_split as tts
-from sklearn.metrics import accuracy_score, recall_score, precision_score 
-from sklearn.utils import shuffle
-from time import process_time
-from mpi4py import MPI
+import numpy as np                                              # package for scientific computing
+import pandas as pd                                             # package for data analysis and manipulation
+import statsmodels.api as sm                                    # package for statistical modelling
+from sklearn.preprocessing import MinMaxScaler                  # used to normalize data
+from sklearn.model_selection import train_test_split as tts     # used to divide training and test data
+from sklearn.metrics import accuracy_score, recall_score, precision_score        # used to get statistical information on the model's performance
+from sklearn.utils import shuffle                               # used to shuffle data before training
+from time import process_time                                   # used to time training and testing model
+from mpi4py import MPI                                                # package for MPI 
 
 
 def init():
@@ -21,8 +27,17 @@ def init():
         data_file = sys.argv[1]
         class_label = sys.argv[2]
 
-        positive_case = int(sys.argv[3])
-        negative_case = int(sys.argv[4])
+        # check to see if the class values are integers or strings
+        # and cast them to ints if needed
+        if (is_intstring(sys.argv[3])):
+            positive_case = int(sys.argv[3])
+        else:
+            positive_case = sys.argv[3]
+
+        if (is_intstring(sys.argv[4])):
+            negative_case = int(sys.argv[4])
+        else:
+            negative_case = sys.argv[4]
 
         comm = MPI.COMM_WORLD
         size = comm.Get_size()
@@ -30,9 +45,8 @@ def init():
         if rank == 0:
             start = process_time()
             data = pd.read_csv('./' + data_file)
-            # SVM only accepts numerical values. 
-            # Therefore, we will transform the categories M and B into
-            # values 1 and -1 (or -1 and 1), respectively.
+            # transform class values to -1 for -ve case and 1 for +ve case
+            # note: SVMs only take in numerical data
             data[class_label] = data[class_label].map({negative_case:-1.0, positive_case:1.0})
             
             Y = data.loc[:, class_label]
@@ -71,10 +85,13 @@ def init():
             X_train = None
             Y_train = None
             final = None
-        print(num_rows)
         num_rows = comm.bcast(num_rows, root=0)
+        print(f"Number of Rows: {num_rows}")
         num_cols = comm.bcast(num_cols, root=0)
+        print(f"Number of Cols: {num_cols}")
         split_size = [num_cols*x for x in num_rows]
+        print("Split Size:")
+        print(*split_size)
 
         X_buf = np.empty((num_cols, num_rows[rank]))
         Y_buf = np.empty(num_rows[rank])
@@ -89,10 +106,8 @@ def init():
         comm.Scatterv([X_train, split_size, X_displacements, MPI.DOUBLE], X_buf, root=0)
         comm.Scatterv([Y_train, num_rows, Y_displacements, MPI.DOUBLE], Y_buf, root=0)
 
-        print(f"Hi from process: {rank}")
-
         # train the model
-        print("Training started...")
+        print(f"Process {rank} has begun training...")
         W = sgd(X_buf.transpose(), Y_buf)
         print("Training finished.")
         print(f"Weights are: {W}")
@@ -115,7 +130,6 @@ def init():
             print(f"Accuracy on test dataset: {accuracy}")
             print(f"Recall on test dataset: {recall}")
             print(f"Precision on test dataset: {precision}")
-            print(f"Area under Precision-Recall Curve: {auc(recall, precision)}")
     else: 
         print("***Incorrect arguments, proper format >> py ./psvm.py {data filename} {class label} {positive class value} {negative class value}")
 
@@ -169,6 +183,13 @@ def sgd(features, outputs):
             prev_cost = cost
             nth += 1
     return weights
+
+def is_intstring(s):
+    try:
+        int(s)
+        return True
+    except ValueError:
+        return False
 
 # def remove_correlated_features(X):
 #     corr_threshold = 0.9

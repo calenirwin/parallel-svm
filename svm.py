@@ -1,42 +1,55 @@
 # Written by Calen Irwin & Ryland Willhans
 # Written for COIS-4350H
-# Last Modified Date: 
-# Purpose: 
-# References: https://github.com/qandeelabbassi/python-svm-sgd/blob/master/svm.py
-#             https://towardsdatascience.com/svm-implementation-from-scratch-python-2db2fc52e5c2
+# Last Modified Date: 2020-04-13
+# Purpose: This program uses the MPI standard to parallelize a SVM classifier.
+#          It can handle large datasets
+# Instructions for running: *depending on your version of Python use 'python' instead of 'py'*
+#   To run with MPI    >> 'mpiexec -n 4 py -m mpi4py psvm.py {inputfile.csv} {class_label} {+ve class value} {-ve class value}'
+#   To run without MPI >> 'py psvm.py'
+# References: https://towardsdatascience.com/svm-implementation-from-scratch-python-2db2fc52e5c2
+#             https://github.com/qandeelabbassi/python-svm-sgd/blob/master/svm.py
 
 import sys
-import numpy as np
-import pandas as pd
-import statsmodels.api as sm
-from sklearn.preprocessing import MinMaxScaler
-from sklearn.model_selection import train_test_split as tts
-from sklearn.metrics import accuracy_score, recall_score 
-from sklearn.utils import shuffle
-from time import process_time
+import math
+import numpy as np                                              # package for scientific computing
+import pandas as pd                                             # package for data analysis and manipulation
+import statsmodels.api as sm                                    # package for statistical modelling
+from sklearn.preprocessing import MinMaxScaler                  # used to normalize data
+from sklearn.model_selection import train_test_split as tts     # used to divide training and test data
+from sklearn.metrics import accuracy_score, recall_score, precision_score        # used to get statistical information on the model's performance
+from sklearn.utils import shuffle                               # used to shuffle data before training
+from time import process_time                                   # used to time training and testing model                                              # used to time training and testing model
 
 
 def init():
-    if len(sys.argv) == 5:
+    if len(sys.argv) == 5:          # expecting 4 additional parameters
         data_file = sys.argv[1]
         class_label = sys.argv[2]
 
-        positive_case = int(sys.argv[3])
-        negative_case = int(sys.argv[4])
+        # check to see if the class values are integers or strings
+        # and cast them to ints if needed
+        if (is_intstring(sys.argv[3])):
+            positive_case = int(sys.argv[3])
+        else:
+            positive_case = sys.argv[3]
+
+        if (is_intstring(sys.argv[4])):
+            negative_case = int(sys.argv[4])
+        else:
+            negative_case = sys.argv[4]
 
         start = process_time()
         data = pd.read_csv('./' + data_file)
-        # SVM only accepts numerical values. 
-        # Therefore, we will transform the categories M and B into
-        # values 1 and -1 (or -1 and 1), respectively.
+        # transform class values to -1 for -ve case and 1 for +ve case
+        # note: SVMs only take in numerical data
         data[class_label] = data[class_label].map({negative_case:-1.0, positive_case:1.0})
         
         Y = data.loc[:, class_label]
         cols = data.columns.tolist()
         cols.remove(class_label)
         X = data.iloc[:, :-1]
-        # normalize the features using MinMaxScalar from
-        # sklearn.preprocessing
+
+        # normalize features
         X_normalized = MinMaxScaler().fit_transform(X.values)
         X = pd.DataFrame(X_normalized)
 
@@ -47,21 +60,22 @@ def init():
         print("splitting dataset into train and test sets...")
         X_train, X_test, y_train, y_test = tts(X, Y, test_size=0.2, random_state=42)
 
-        # train the model
-        print("training started...")
+        # train the model using the training set
+        print("Training has started...")
         W = sgd(X_train.to_numpy(), y_train.to_numpy())
-        print("training finished.")
+        print("Training has finished")
         print("weights are: {}".format(W))
         y_test_predicted = np.array([])
 
         for i in range(X_test.shape[0]):
-            yp = np.sign(np.dot(W, X_test.to_numpy()[i])) #model
+            yp = np.sign(np.dot(W, X_test.to_numpy()[i])) # model
             y_test_predicted = np.append(y_test_predicted, yp)
         stop = process_time()
         print(f"time taken: {stop-start}")
         print("accuracy on test dataset: {}".format(accuracy_score(y_test.to_numpy(), y_test_predicted)))
         print("recall on test dataset: {}".format(recall_score(y_test.to_numpy(), y_test_predicted)))
         print("precision on test dataset: {}".format(precision_score(y_test.to_numpy(), y_test_predicted)))
+    # error if incorrect arguments were passed
     else:
         print("***Incorrect arguments, proper format >> py ./svm.py {data filename} {class label} {positive class value} {negative class value}")
 
@@ -115,6 +129,13 @@ def sgd(features, outputs):
             prev_cost = cost
             nth += 1
     return weights
+
+def is_intstring(s):
+    try:
+        int(s)
+        return True
+    except ValueError:
+        return False
 
 # def remove_correlated_features(X):
 #     corr_threshold = 0.9
