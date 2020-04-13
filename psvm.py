@@ -10,7 +10,7 @@ import pandas as pd
 import statsmodels.api as sm
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.model_selection import train_test_split as tts
-from sklearn.metrics import accuracy_score, recall_score, precision_score 
+from sklearn.metrics import accuracy_score, recall_score, precision_score, auc
 from sklearn.utils import shuffle
 from time import process_time
 from mpi4py import MPI
@@ -21,8 +21,8 @@ def init():
         data_file = sys.argv[1]
         class_label = sys.argv[2]
 
-        positive_case = int(sys.argv[3])
-        negative_case = int(sys.argv[4])
+        positive_case = sys.argv[3]
+        negative_case = sys.argv[4]
 
         comm = MPI.COMM_WORLD
         size = comm.Get_size()
@@ -38,7 +38,11 @@ def init():
             Y = data.loc[:, class_label]
             cols = data.columns.tolist()
             cols.remove(class_label)
-            X = data.iloc[:, :-1]
+            X = data.loc[:, cols]
+
+            # remove_correlated_features(X)
+            # remove_less_significant_features(X, Y)
+
             # normalize the features using MinMaxScalar from
             # sklearn.preprocessing
             X_normalized = MinMaxScaler().fit_transform(X.values)
@@ -54,7 +58,6 @@ def init():
         
             X_train = X_train.to_numpy()
             Y_train = Y_train.to_numpy()
-            print(type(X_train))
             num_cols = X_train.shape[1]
             split_size = len(X_train) / size
             num_rows = [math.floor(split_size)] * size  # number of rows each process will receive
@@ -71,7 +74,6 @@ def init():
             X_train = None
             Y_train = None
             final = None
-        print(num_rows)
         num_rows = comm.bcast(num_rows, root=0)
         num_cols = comm.bcast(num_cols, root=0)
         split_size = [num_cols*x for x in num_rows]
@@ -88,6 +90,7 @@ def init():
 
         comm.Scatterv([X_train, split_size, X_displacements, MPI.DOUBLE], X_buf, root=0)
         comm.Scatterv([Y_train, num_rows, Y_displacements, MPI.DOUBLE], Y_buf, root=0)
+        
 
         print(f"Hi from process: {rank}")
 
@@ -101,21 +104,22 @@ def init():
         comm.Reduce([W, MPI.DOUBLE], [final, MPI.DOUBLE], op = MPI.SUM, root=0)
 
         if rank == 0:
-            print(f"Final weights are: {W}")
-            y_test_predicted = np.array([])
+            final = [x/size for x in final]
+            print(f"Final weights are: {final}")
+            Y_test_predicted = np.array([])
 
             for i in range(X_test.shape[0]):
                 yp = np.sign(np.dot(final, X_test.to_numpy()[i])) #model
-                y_test_predicted = np.append(y_test_predicted, yp)
+                Y_test_predicted = np.append(Y_test_predicted, yp)
             stop = process_time()
-            accuracy = accuracy_score(Y_test.to_numpy(), y_test_predicted)
-            recall = recall_score(Y_test.to_numpy(), y_test_predicted)
-            precision = precision_score(Y_test.to_numpy(), y_test_predicted)
+            accuracy = accuracy_score(Y_test.to_numpy(), Y_test_predicted)
+            recall = recall_score(Y_test.to_numpy(), Y_test_predicted)
+            precision = precision_score(Y_test.to_numpy(), Y_test_predicted)
             print(f"Time taken: {stop-start}")
             print(f"Accuracy on test dataset: {accuracy}")
             print(f"Recall on test dataset: {recall}")
             print(f"Precision on test dataset: {precision}")
-            print(f"Area under Precision-Recall Curve: {auc(recall, precision)}")
+            # print(f"Area under Precision-Recall Curve: {auc(recall, precision)}")
     else: 
         print("***Incorrect arguments, proper format >> py ./psvm.py {data filename} {class label} {positive class value} {negative class value}")
 
@@ -170,32 +174,32 @@ def sgd(features, outputs):
             nth += 1
     return weights
 
-# def remove_correlated_features(X):
-#     corr_threshold = 0.9
-#     corr = X.corr()
-#     drop_columns = np.full(corr.shape[0], False, dtype=bool)
-#     for i in range(corr.shape[0]):
-#         for j in range(i + 1, corr.shape[0]):
-#             if corr.iloc[i, j] >= corr_threshold:
-#                 drop_columns[j] = True
-#     columns_dropped = X.columns[drop_columns]
-#     X.drop(columns_dropped, axis=1, inplace=True)
-#     return columns_dropped
-# def remove_less_significant_features(X, Y):
-#     sl = 0.05
-#     regression_ols = None
-#     columns_dropped = np.array([])
-#     for itr in range(0, len(X.columns)):
-#         regression_ols = sm.OLS(Y, X).fit()
-#         max_col = regression_ols.pvalues.idxmax()
-#         max_val = regression_ols.pvalues.max()
-#         if max_val > sl:
-#             X.drop(max_col, axis='columns', inplace=True)
-#             columns_dropped = np.append(columns_dropped, [max_col])
-#         else:
-#             break
-#     regression_ols.summary()
-#     return columns_dropped
+def remove_correlated_features(X):
+    corr_threshold = 0.9
+    corr = X.corr()
+    drop_columns = np.full(corr.shape[0], False, dtype=bool)
+    for i in range(corr.shape[0]):
+        for j in range(i + 1, corr.shape[0]):
+            if corr.iloc[i, j] >= corr_threshold:
+                drop_columns[j] = True
+    columns_dropped = X.columns[drop_columns]
+    X.drop(columns_dropped, axis=1, inplace=True)
+    return columns_dropped
+def remove_less_significant_features(X, Y):
+    sl = 0.05
+    regression_ols = None
+    columns_dropped = np.array([])
+    for itr in range(0, len(X.columns)):
+        regression_ols = sm.OLS(Y, X).fit()
+        max_col = regression_ols.pvalues.idxmax()
+        max_val = regression_ols.pvalues.max()
+        if max_val > sl:
+            X.drop(max_col, axis='columns', inplace=True)
+            columns_dropped = np.append(columns_dropped, [max_col])
+        else:
+            break
+    regression_ols.summary()
+    return columns_dropped
 
 reg_strength = 10000 # regularization strength
 learning_rate = 0.000001

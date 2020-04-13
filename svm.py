@@ -11,7 +11,7 @@ import pandas as pd
 import statsmodels.api as sm
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.model_selection import train_test_split as tts
-from sklearn.metrics import accuracy_score, recall_score 
+from sklearn.metrics import accuracy_score, recall_score, precision_score, auc
 from sklearn.utils import shuffle
 from time import process_time
 
@@ -21,8 +21,8 @@ def init():
         data_file = sys.argv[1]
         class_label = sys.argv[2]
 
-        positive_case = int(sys.argv[3])
-        negative_case = int(sys.argv[4])
+        positive_case = sys.argv[3]
+        negative_case = sys.argv[4]
 
         start = process_time()
         data = pd.read_csv('./' + data_file)
@@ -34,7 +34,11 @@ def init():
         Y = data.loc[:, class_label]
         cols = data.columns.tolist()
         cols.remove(class_label)
-        X = data.iloc[:, :-1]
+        X = data.loc[:, cols]
+
+        remove_correlated_features(X)
+        remove_less_significant_features(X, Y)
+
         # normalize the features using MinMaxScalar from
         # sklearn.preprocessing
         X_normalized = MinMaxScaler().fit_transform(X.values)
@@ -45,11 +49,11 @@ def init():
         # test_size is the portion of data that will go into test set
         # random_state is the seed used by the random number generator
         print("splitting dataset into train and test sets...")
-        X_train, X_test, y_train, y_test = tts(X, Y, test_size=0.2, random_state=42)
+        X_train, X_test, Y_train, Y_test = tts(X, Y, test_size=0.2, random_state=42)
 
         # train the model
         print("training started...")
-        W = sgd(X_train.to_numpy(), y_train.to_numpy())
+        W = sgd(X_train.to_numpy(), Y_train.to_numpy())
         print("training finished.")
         print("weights are: {}".format(W))
         y_test_predicted = np.array([])
@@ -58,10 +62,14 @@ def init():
             yp = np.sign(np.dot(W, X_test.to_numpy()[i])) #model
             y_test_predicted = np.append(y_test_predicted, yp)
         stop = process_time()
-        print(f"time taken: {stop-start}")
-        print("accuracy on test dataset: {}".format(accuracy_score(y_test.to_numpy(), y_test_predicted)))
-        print("recall on test dataset: {}".format(recall_score(y_test.to_numpy(), y_test_predicted)))
-        print("precision on test dataset: {}".format(precision_score(y_test.to_numpy(), y_test_predicted)))
+        accuracy = accuracy_score(Y_test.to_numpy(), y_test_predicted)
+        recall = recall_score(Y_test.to_numpy(), y_test_predicted)
+        precision = precision_score(Y_test.to_numpy(), y_test_predicted)
+        print(f"Time taken: {stop-start}")
+        print(f"Accuracy on test dataset: {accuracy}")
+        print(f"Recall on test dataset: {recall}")
+        print(f"Precision on test dataset: {precision}")
+        # print(f"Area under Precision-Recall Curve: {auc(recall, precision)}")
     else:
         print("***Incorrect arguments, proper format >> py ./svm.py {data filename} {class label} {positive class value} {negative class value}")
 
@@ -93,7 +101,7 @@ def calculate_cost_gradient(W, X_batch, Y_batch):
     return dw
 
 def sgd(features, outputs):
-    max_epochs = 5000
+    max_epochs = 5096
     weights = np.zeros(features.shape[1])
     nth = 0
     prev_cost = float("inf")
@@ -116,32 +124,32 @@ def sgd(features, outputs):
             nth += 1
     return weights
 
-# def remove_correlated_features(X):
-#     corr_threshold = 0.9
-#     corr = X.corr()
-#     drop_columns = np.full(corr.shape[0], False, dtype=bool)
-#     for i in range(corr.shape[0]):
-#         for j in range(i + 1, corr.shape[0]):
-#             if corr.iloc[i, j] >= corr_threshold:
-#                 drop_columns[j] = True
-#     columns_dropped = X.columns[drop_columns]
-#     X.drop(columns_dropped, axis=1, inplace=True)
-#     return columns_dropped
-# def remove_less_significant_features(X, Y):
-#     sl = 0.05
-#     regression_ols = None
-#     columns_dropped = np.array([])
-#     for itr in range(0, len(X.columns)):
-#         regression_ols = sm.OLS(Y, X).fit()
-#         max_col = regression_ols.pvalues.idxmax()
-#         max_val = regression_ols.pvalues.max()
-#         if max_val > sl:
-#             X.drop(max_col, axis='columns', inplace=True)
-#             columns_dropped = np.append(columns_dropped, [max_col])
-#         else:
-#             break
-#     regression_ols.summary()
-#     return columns_dropped
+def remove_correlated_features(X):
+    corr_threshold = 0.9
+    corr = X.corr()
+    drop_columns = np.full(corr.shape[0], False, dtype=bool)
+    for i in range(corr.shape[0]):
+        for j in range(i + 1, corr.shape[0]):
+            if corr.iloc[i, j] >= corr_threshold:
+                drop_columns[j] = True
+    columns_dropped = X.columns[drop_columns]
+    X.drop(columns_dropped, axis=1, inplace=True)
+    return columns_dropped
+def remove_less_significant_features(X, Y):
+    sl = 0.05
+    regression_ols = None
+    columns_dropped = np.array([])
+    for itr in range(0, len(X.columns)):
+        regression_ols = sm.OLS(Y, X).fit()
+        max_col = regression_ols.pvalues.idxmax()
+        max_val = regression_ols.pvalues.max()
+        if max_val > sl:
+            X.drop(max_col, axis='columns', inplace=True)
+            columns_dropped = np.append(columns_dropped, [max_col])
+        else:
+            break
+    regression_ols.summary()
+    return columns_dropped
 
 reg_strength = 10000 # regularization strength
 learning_rate = 0.000001
