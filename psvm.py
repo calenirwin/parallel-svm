@@ -40,8 +40,8 @@ def init():
             cols.remove(class_label)
             X = data.loc[:, cols]
 
-            # remove_correlated_features(X)
-            # remove_less_significant_features(X, Y)
+            remove_correlated_features(X)
+            remove_less_significant_features(X, Y)
 
             # normalize the features using MinMaxScalar from
             # sklearn.preprocessing
@@ -61,11 +61,22 @@ def init():
             num_cols = X_train.shape[1]
             split_size = len(X_train) / size
             num_rows = [math.floor(split_size)] * size  # number of rows each process will receive
-
-            for i in range(len(X_train) % size - 1):
+            for i in range(len(X_train) % size):
                 num_rows[i] += 1
+            X_train = np.ascontiguousarray(X_train)
+            print(X_train[:2])
+            print()
+            print(X_train[num_rows[0]:num_rows[0]+2])
 
             final = np.zeros(num_cols)
+            split_size = [num_cols*x for x in num_rows]
+        
+            Y_displacements = [0] * size
+
+            for i in range(1, size):
+                Y_displacements[i] = Y_displacements[i-1] + num_rows[i-1]
+
+            X_displacements = [x*num_cols for x in Y_displacements]
 
         else:
             num_rows = None
@@ -74,29 +85,25 @@ def init():
             X_train = None
             Y_train = None
             final = None
+            X_displacements = None
+            Y_displacements = None
         num_rows = comm.bcast(num_rows, root=0)
         num_cols = comm.bcast(num_cols, root=0)
-        split_size = [num_cols*x for x in num_rows]
 
-        X_buf = np.empty((num_cols, num_rows[rank]))
+        X_buf = np.empty((num_rows[rank], num_cols))
+        print(X_buf.shape)
         Y_buf = np.empty(num_rows[rank])
-        
-        X_displacements = [0] * size
-
-        for i in range(1, size):
-            X_displacements[i] = X_displacements[i-1] + split_size[i-1]
-
-        Y_displacements = [x/num_cols for x in X_displacements]
 
         comm.Scatterv([X_train, split_size, X_displacements, MPI.DOUBLE], X_buf, root=0)
         comm.Scatterv([Y_train, num_rows, Y_displacements, MPI.DOUBLE], Y_buf, root=0)
+        print(X_buf[:2])
         
 
         print(f"Hi from process: {rank}")
 
         # train the model
         print("Training started...")
-        W = sgd(X_buf.transpose(), Y_buf)
+        W = sgd(X_buf, Y_buf)
         print("Training finished.")
         print(f"Weights are: {W}")
 
