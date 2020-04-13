@@ -16,7 +16,7 @@ import pandas as pd                                             # package for da
 import statsmodels.api as sm                                    # package for statistical modelling
 from sklearn.preprocessing import MinMaxScaler                  # used to normalize data
 from sklearn.model_selection import train_test_split as tts     # used to divide training and test data
-from sklearn.metrics import accuracy_score, recall_score, precision_score        # used to get statistical information on the model's performance
+from sklearn.metrics import accuracy_score, recall_score, precision_score, auc        # used to get statistical information on the model's performance
 from sklearn.utils import shuffle                               # used to shuffle data before training
 from time import process_time                                   # used to time training and testing model
 from mpi4py import MPI                                                # package for MPI 
@@ -52,7 +52,11 @@ def init():
             Y = data.loc[:, class_label]
             cols = data.columns.tolist()
             cols.remove(class_label)
-            X = data.iloc[:, :-1]
+            X = data.loc[:, cols]
+
+            remove_correlated_features(X)
+            remove_less_significant_features(X, Y)
+
             # normalize the features using MinMaxScalar from
             # sklearn.preprocessing
             X_normalized = MinMaxScaler().fit_transform(X.values)
@@ -68,15 +72,25 @@ def init():
         
             X_train = X_train.to_numpy()
             Y_train = Y_train.to_numpy()
-            print(type(X_train))
             num_cols = X_train.shape[1]
             split_size = len(X_train) / size
             num_rows = [math.floor(split_size)] * size  # number of rows each process will receive
-
-            for i in range(len(X_train) % size - 1):
+            for i in range(len(X_train) % size):
                 num_rows[i] += 1
+            X_train = np.ascontiguousarray(X_train)
+            print(X_train[:2])
+            print()
+            print(X_train[num_rows[0]:num_rows[0]+2])
 
             final = np.zeros(num_cols)
+            split_size = [num_cols*x for x in num_rows]
+        
+            Y_displacements = [0] * size
+
+            for i in range(1, size):
+                Y_displacements[i] = Y_displacements[i-1] + num_rows[i-1]
+
+            X_displacements = [x*num_cols for x in Y_displacements]
 
         else:
             num_rows = None
@@ -85,30 +99,24 @@ def init():
             X_train = None
             Y_train = None
             final = None
+            X_displacements = None
+            Y_displacements = None
         num_rows = comm.bcast(num_rows, root=0)
         print(f"Number of Rows: {num_rows}")
         num_cols = comm.bcast(num_cols, root=0)
-        print(f"Number of Cols: {num_cols}")
-        split_size = [num_cols*x for x in num_rows]
-        print("Split Size:")
-        print(*split_size)
 
-        X_buf = np.empty((num_cols, num_rows[rank]))
+        X_buf = np.empty((num_rows[rank], num_cols))
+        print(X_buf.shape)
         Y_buf = np.empty(num_rows[rank])
-        
-        X_displacements = [0] * size
-
-        for i in range(1, size):
-            X_displacements[i] = X_displacements[i-1] + split_size[i-1]
-
-        Y_displacements = [x/num_cols for x in X_displacements]
 
         comm.Scatterv([X_train, split_size, X_displacements, MPI.DOUBLE], X_buf, root=0)
         comm.Scatterv([Y_train, num_rows, Y_displacements, MPI.DOUBLE], Y_buf, root=0)
+        print(X_buf[:2])
+        
 
         # train the model
-        print(f"Process {rank} has begun training...")
-        W = sgd(X_buf.transpose(), Y_buf)
+        print("Training started...")
+        W = sgd(X_buf, Y_buf)
         print("Training finished.")
         print(f"Weights are: {W}")
 
@@ -116,20 +124,22 @@ def init():
         comm.Reduce([W, MPI.DOUBLE], [final, MPI.DOUBLE], op = MPI.SUM, root=0)
 
         if rank == 0:
-            print(f"Final weights are: {W}")
-            y_test_predicted = np.array([])
+            final = [x/size for x in final]
+            print(f"Final weights are: {final}")
+            Y_test_predicted = np.array([])
 
             for i in range(X_test.shape[0]):
                 yp = np.sign(np.dot(final, X_test.to_numpy()[i])) #model
-                y_test_predicted = np.append(y_test_predicted, yp)
+                Y_test_predicted = np.append(Y_test_predicted, yp)
             stop = process_time()
-            accuracy = accuracy_score(Y_test.to_numpy(), y_test_predicted)
-            recall = recall_score(Y_test.to_numpy(), y_test_predicted)
-            precision = precision_score(Y_test.to_numpy(), y_test_predicted)
+            accuracy = accuracy_score(Y_test.to_numpy(), Y_test_predicted)
+            recall = recall_score(Y_test.to_numpy(), Y_test_predicted)
+            precision = precision_score(Y_test.to_numpy(), Y_test_predicted)
             print(f"Time taken: {stop-start}")
             print(f"Accuracy on test dataset: {accuracy}")
             print(f"Recall on test dataset: {recall}")
             print(f"Precision on test dataset: {precision}")
+            # print(f"Area under Precision-Recall Curve: {auc(recall, precision)}")
     else: 
         print("***Incorrect arguments, proper format >> py ./psvm.py {data filename} {class label} {positive class value} {negative class value}")
 
@@ -191,32 +201,32 @@ def is_intstring(s):
     except ValueError:
         return False
 
-# def remove_correlated_features(X):
-#     corr_threshold = 0.9
-#     corr = X.corr()
-#     drop_columns = np.full(corr.shape[0], False, dtype=bool)
-#     for i in range(corr.shape[0]):
-#         for j in range(i + 1, corr.shape[0]):
-#             if corr.iloc[i, j] >= corr_threshold:
-#                 drop_columns[j] = True
-#     columns_dropped = X.columns[drop_columns]
-#     X.drop(columns_dropped, axis=1, inplace=True)
-#     return columns_dropped
-# def remove_less_significant_features(X, Y):
-#     sl = 0.05
-#     regression_ols = None
-#     columns_dropped = np.array([])
-#     for itr in range(0, len(X.columns)):
-#         regression_ols = sm.OLS(Y, X).fit()
-#         max_col = regression_ols.pvalues.idxmax()
-#         max_val = regression_ols.pvalues.max()
-#         if max_val > sl:
-#             X.drop(max_col, axis='columns', inplace=True)
-#             columns_dropped = np.append(columns_dropped, [max_col])
-#         else:
-#             break
-#     regression_ols.summary()
-#     return columns_dropped
+def remove_correlated_features(X):
+    corr_threshold = 0.9
+    corr = X.corr()
+    drop_columns = np.full(corr.shape[0], False, dtype=bool)
+    for i in range(corr.shape[0]):
+        for j in range(i + 1, corr.shape[0]):
+            if corr.iloc[i, j] >= corr_threshold:
+                drop_columns[j] = True
+    columns_dropped = X.columns[drop_columns]
+    X.drop(columns_dropped, axis=1, inplace=True)
+    return columns_dropped
+def remove_less_significant_features(X, Y):
+    sl = 0.05
+    regression_ols = None
+    columns_dropped = np.array([])
+    for itr in range(0, len(X.columns)):
+        regression_ols = sm.OLS(Y, X).fit()
+        max_col = regression_ols.pvalues.idxmax()
+        max_val = regression_ols.pvalues.max()
+        if max_val > sl:
+            X.drop(max_col, axis='columns', inplace=True)
+            columns_dropped = np.append(columns_dropped, [max_col])
+        else:
+            break
+    regression_ols.summary()
+    return columns_dropped
 
 reg_strength = 10000 # regularization strength
 learning_rate = 0.000001
