@@ -49,17 +49,19 @@ def init():
         rank = comm.Get_rank()  # rank = ID of current process (e.g., 0, 1, 2, etc.)
 
         if rank == 0:   # if the process is the root process
-            data = pd.read_csv('./' + data_file)
-            start = process_time()  # start timing after reading in the file
+            data = pd.read_csv('./' + data_file)    # read in data file
+            start = process_time()                  # start timer
+
             # transform class values to -1 for -ve case and 1 for +ve case
             # note: SVMs only take in numerical data
             data[class_label] = data[class_label].map({negative_case:-1.0, positive_case:1.0})
             
-            # partition features and class values 
+            # partition label and features 
             Y = data.loc[:, class_label]
             cols = data.columns.tolist()
             cols.remove(class_label)
             X = data.loc[:, cols]
+            print(X.shape)
 
             # preprocessing of data to yield better results
             remove_correlated_features(X)  
@@ -83,18 +85,18 @@ def init():
 
             num_cols = X_train.shape[1]     # get the number of columns
 
-            split_size = len(X_train) / size
+            split_size = len(X_train) / size            # number of rows per proces if there was no remainder
 
             num_rows = [math.floor(split_size)] * size  # number of rows each process will receive
 
-            for i in range(len(X_train) % size):        # divide the remainder among processes
+            for i in range(len(X_train) % size):        # add the remaining rows among the processes
                 num_rows[i] += 1
 
             X_train = np.ascontiguousarray(X_train)     # convert the array back into row-major format
 
             final_weights = np.zeros(num_cols)          # array to hold weights after they've been gathered from all processes        
 
-            split_sizes = [num_cols * x for x in num_rows]
+            split_sizes = [num_cols * x for x in num_rows]  # for Scatterv to know the number of rows to give each process
         
             Y_displacements = [0] * size    # make an array of 0s to hold the displacements for Y values
 
@@ -128,7 +130,6 @@ def init():
         # X and Y displacements
         comm.Scatterv([X_train, split_sizes, X_displacements, MPI.DOUBLE], X_buf, root=0)
         comm.Scatterv([Y_train, num_rows, Y_displacements, MPI.DOUBLE], Y_buf, root=0)
-
         
         print(f"Process {rank} has begun training...")
         # build the model
@@ -140,23 +141,28 @@ def init():
         comm.Reduce([W, MPI.DOUBLE], [final_weights, MPI.DOUBLE], op = MPI.SUM, root=0)
 
         if rank == 0:
-            final_weights = [x/size for x in final_weights]
+            final_weights = [x/size for x in final_weights]          # average weights 
             print(f"Final weights: {final_weights}")
-            Y_test_predicted = np.array([])
 
-            for i in range(X_test.shape[0]):
-                yp = np.sign(np.dot(final_weights, X_test.to_numpy()[i]))
-                Y_test_predicted = np.append(Y_test_predicted, yp)
+            Y_test_predicted = np.array([])                          # empty array to hold model predictions
 
-            stop = process_time()
-            accuracy = accuracy_score(Y_test.to_numpy(), Y_test_predicted)
-            recall = recall_score(Y_test.to_numpy(), Y_test_predicted)
-            precision = precision_score(Y_test.to_numpy(), Y_test_predicted)
-            print(f"Time taken: {stop-start}")
+            stop = process_time()                                    # stop timer
+            print(f"Time taken for training: {stop - start}")
+
+            Y_test_predicted = np.sign(np.dot(X_test.to_numpy(), W)) # apply model to get predicted classes
+            Y_test = Y_test.to_numpy()                               # actual classes
+
+            accuracy = accuracy_score(Y_test, Y_test_predicted)
+            recall = recall_score(Y_test, Y_test_predicted)
+            precision = precision_score(Y_test, Y_test_predicted)
+
             print(f"Accuracy on test dataset: {accuracy}")
             print(f"Recall on test dataset: {recall}")
             print(f"Precision on test dataset: {precision}")
             # print(f"Area under Precision-Recall Curve: {auc(recall, precision)}")
+
+            skplt.metrics.plot_confusion_matrix(Y_Test, Y_test_predicted, normalize=True)
+            plt.show()
     else: 
         print("***Incorrect arguments, proper format: py ./psvm.py {data filename} {class label} {positive class value} {negative class value}")
 

@@ -1,27 +1,24 @@
 # Written by Calen Irwin & Ryland Willhans
 # Written for COIS-4350H
 # Last Modified Date: 2020-04-13
-# Purpose: This program uses the MPI standard to parallelize a SVM classifier.
-#          It can handle large datasets
+# Purpose: Non-paralell implementation of a, SVM that uses SGD to compare with the results of our parallelized version.
 # Instructions for running: *depending on your version of Python use 'python' instead of 'py'*
 #   To run with MPI    >> 'mpiexec -n 4 py -m mpi4py psvm.py {inputfile.csv} {class_label} {+ve class value} {-ve class value}'
 #   To run without MPI >> 'py psvm.py'
-# References: https://towardsdatascience.com/svm-implementation-from-scratch-python-2db2fc52e5c2
-#             https://github.com/qandeelabbassi/python-svm-sgd/blob/master/svm.py
+# References: [0] https://towardsdatascience.com/svm-implementation-from-scratch-python-2db2fc52e5c2
 
-import sys
-import math
-import numpy as np                                              # package for scientific computing
-import pandas as pd                                             # package for data analysis and manipulation
-import statsmodels.api as sm                                    # package for statistical modelling
-import matplotlib.pyplot as plt                                 # package for displaying confusion matrix
-import scikitplot as skplt                                      # package for generating confusion matrix
-from sklearn.preprocessing import MinMaxScaler                  # used to normalize data
-from sklearn.model_selection import train_test_split as tts     # used to divide training and test data
-from sklearn.metrics import accuracy_score, recall_score, precision_score        # used to get statistical information on the model's performance
-
-from sklearn.utils import shuffle                               # used to shuffle data before training
-from time import process_time                                   # used to time training and testing model
+import sys # library for accessing command line arguments
+import math # library for basic mathematical operations
+import numpy as np # package for scientific computing
+import pandas as pd  # package for data analysis and manipulation
+import statsmodels.api as sm # package for statistical modelling
+import matplotlib.pyplot as plt # package for displaying confusion matrix
+import scikitplot as skplt # package for generating confusion matrix
+from sklearn.preprocessing import MinMaxScaler  # used to normalize data
+from sklearn.model_selection import train_test_split as tts # used to divide training and test data
+from sklearn.metrics import accuracy_score, recall_score, precision_score # used to get statistical information on the model's performance
+from sklearn.utils import shuffle # used to shuffle data before training
+from time import process_time # used to time training and testing model
 
 
 def init():
@@ -41,8 +38,9 @@ def init():
         else:
             negative_case = sys.argv[4]
 
-        start = process_time()
-        data = pd.read_csv('./' + data_file)
+        data = pd.read_csv('./' + data_file)    # read in data file
+        start = process_time()                  # start timer
+
         # transform class values to -1 for -ve case and 1 for +ve case
         # note: SVMs only take in numerical data
         data[class_label] = data[class_label].map({negative_case:-1.0, positive_case:1.0})
@@ -52,6 +50,7 @@ def init():
         cols.remove(class_label)
         X = data.loc[:, cols]
 
+        # preprocessing of data to yield better results
         remove_correlated_features(X)
         remove_less_significant_features(X, Y)
 
@@ -60,10 +59,9 @@ def init():
         X_normalized = MinMaxScaler().fit_transform(X.values)
         X = pd.DataFrame(X_normalized)
 
-        # first insert 1 in every row for intercept b
         X.insert(loc=len(X.columns), column='intercept', value=1)
-        # test_size is the portion of data that will go into test set
-        # random_state is the seed used by the random number generator
+        # test_size = portion of data to reserve for the test set
+        # random_state = seed for random number generator
         print("splitting dataset into train and test sets...")
         X_train, X_test, Y_train, Y_test = tts(X, Y, test_size=0.2, random_state=42)
 
@@ -71,21 +69,20 @@ def init():
         print("training started...")
         W = sgd(X_train.to_numpy(), Y_train.to_numpy())
         print("training finished.")
+
         print("weights are: {}".format(W))
-        Y_test_predicted = np.array([])
 
-        for i in range(X_test.shape[0]):
-            yp = np.sign(np.dot(W, X_test.to_numpy()[i])) # model
-            Y_test_predicted = np.append(Y_test_predicted, yp)
         stop = process_time()
+        print(f"Time taken for training: {stop-start}")
 
+        
+        Y_test_predicted = np.sign(np.dot(X_test.to_numpy(), W)) #model
         Y_test = Y_test.to_numpy()
 
         accuracy = accuracy_score(Y_test, Y_test_predicted)
         recall = recall_score(Y_test, Y_test_predicted)
         precision = precision_score(Y_test, Y_test_predicted)
 
-        print(f"Time taken: {stop-start}")
         print(f"Accuracy on test dataset: {accuracy}")
         print(f"Recall on test dataset: {recall}")
         print(f"Precision on test dataset: {precision}")
@@ -95,7 +92,7 @@ def init():
     else:
         print("***Incorrect arguments, proper format >> py ./svm.py {data filename} {class label} {positive class value} {negative class value}")
 
-
+# taken from reference [0]
 def compute_cost(W, X, Y):
     # calculate hinge loss
     N = X.shape[0]
@@ -107,6 +104,7 @@ def compute_cost(W, X, Y):
     cost = 1 / 2 * np.dot(W, W) + hinge_loss
     return cost
 
+# taken from reference [0]
 def calculate_cost_gradient(W, X_batch, Y_batch):
     # if only one example is passed (eg. in case of SGD)
     if type(Y_batch) == np.float64:
@@ -123,6 +121,9 @@ def calculate_cost_gradient(W, X_batch, Y_batch):
     dw = dw/len(Y_batch)  # average
     return dw
 
+# stochastic gradient descent function
+# purpose: to minimize the cost function of the SVM
+# taken from reference [0]
 def sgd(features, outputs):
     max_epochs = 5096
     weights = np.zeros(features.shape[1])
@@ -147,6 +148,7 @@ def sgd(features, outputs):
             nth += 1
     return weights
 
+# taken from reference [0]
 def remove_correlated_features(X):
     corr_threshold = 0.9
     corr = X.corr()
@@ -159,6 +161,7 @@ def remove_correlated_features(X):
     X.drop(columns_dropped, axis=1, inplace=True)
     return columns_dropped
 
+# taken from reference [0]
 def remove_less_significant_features(X, Y):
     sl = 0.05
     regression_ols = None
