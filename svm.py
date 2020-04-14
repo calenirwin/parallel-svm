@@ -1,7 +1,7 @@
 # Written by Calen Irwin & Ryland Willhans
 # Written for COIS-4350H
-# Last Modified Date: 2020-04-13
-# Purpose: Non-paralell implementation of a, SVM that uses SGD to compare with the results of our parallelized version.
+# Last Modified Date: 2020-04-1
+# Purpose: Non-parallel implementation of a SVM that uses SGD to compare with the results of our parallelized version.
 # Instructions for running: *depending on your version of Python use 'python' instead of 'py'*
 #   'python svm.py {inputfile.csv} {class_label} {+ve class value} {-ve class value}'
 # References: [0] https://towardsdatascience.com/svm-implementation-from-scratch-python-2db2fc52e5c2

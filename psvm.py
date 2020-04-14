@@ -1,6 +1,6 @@
 # Written by Calen Irwin & Ryland Willhans
 # Written for COIS-4350H
-# Last Modified Date: 2020-04-13
+# Last Modified Date: 2020-04-14
 #
 # Purpose: This program uses the MPI standard to parallelize an SVM classifier. The cost reduction step of our SVM is the portion 
 #          that is parallelized. Each process is given a relatively equal subset of the data, and then it uses SGD to calculate 
