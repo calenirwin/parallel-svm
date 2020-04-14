@@ -38,8 +38,8 @@ def init():
         else:
             negative_case = sys.argv[4]
 
-        start = process_time()
         data = pd.read_csv('./' + data_file)
+        start = process_time()
         # transform class values to -1 for -ve case and 1 for +ve case
         # note: SVMs only take in numerical data
         data[class_label] = data[class_label].map({negative_case:-1.0, positive_case:1.0})
@@ -69,16 +69,15 @@ def init():
         W = sgd(X_train.to_numpy(), Y_train.to_numpy())
         print("training finished.")
         print("weights are: {}".format(W))
-        y_test_predicted = np.array([])
-
-        for i in range(X_test.shape[0]):
-            yp = np.sign(np.dot(W, X_test.to_numpy()[i])) # model
-            y_test_predicted = np.append(y_test_predicted, yp)
         stop = process_time()
-        accuracy = accuracy_score(Y_test.to_numpy(), y_test_predicted)
-        recall = recall_score(Y_test.to_numpy(), y_test_predicted)
-        precision = precision_score(Y_test.to_numpy(), y_test_predicted)
-        print(f"Time taken: {stop-start}")
+        print(f"Time taken for training: {stop-start}")
+
+        
+        Y_test_predicted = np.sign(np.dot(X_test.to_numpy(), W)) #model
+        Y_test = Y_test.to_numpy()
+        accuracy = accuracy_score(Y_test, Y_test_predicted)
+        recall = recall_score(Y_test, Y_test_predicted)
+        precision = precision_score(Y_test, Y_test_predicted)
         print(f"Accuracy on test dataset: {accuracy}")
         print(f"Recall on test dataset: {recall}")
         print(f"Precision on test dataset: {precision}")

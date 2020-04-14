@@ -43,8 +43,8 @@ def init():
         size = comm.Get_size()
         rank = comm.Get_rank()
         if rank == 0:
-            start = process_time()
             data = pd.read_csv('./' + data_file)
+            start = process_time()
             # transform class values to -1 for -ve case and 1 for +ve case
             # note: SVMs only take in numerical data
             data[class_label] = data[class_label].map({negative_case:-1.0, positive_case:1.0})
@@ -53,8 +53,10 @@ def init():
             cols = data.columns.tolist()
             cols.remove(class_label)
             X = data.loc[:, cols]
+            print(X.shape)
 
             remove_correlated_features(X)
+            print(X.shape)
             remove_less_significant_features(X, Y)
 
             # normalize the features using MinMaxScalar from
@@ -78,9 +80,6 @@ def init():
             for i in range(len(X_train) % size):
                 num_rows[i] += 1
             X_train = np.ascontiguousarray(X_train)
-            print(X_train[:2])
-            print()
-            print(X_train[num_rows[0]:num_rows[0]+2])
 
             final = np.zeros(num_cols)
             split_size = [num_cols*x for x in num_rows]
@@ -102,16 +101,13 @@ def init():
             X_displacements = None
             Y_displacements = None
         num_rows = comm.bcast(num_rows, root=0)
-        print(f"Number of Rows: {num_rows}")
         num_cols = comm.bcast(num_cols, root=0)
 
         X_buf = np.empty((num_rows[rank], num_cols))
-        print(X_buf.shape)
         Y_buf = np.empty(num_rows[rank])
 
         comm.Scatterv([X_train, split_size, X_displacements, MPI.DOUBLE], X_buf, root=0)
         comm.Scatterv([Y_train, num_rows, Y_displacements, MPI.DOUBLE], Y_buf, root=0)
-        print(X_buf[:2])
         
 
         # train the model
@@ -126,16 +122,14 @@ def init():
         if rank == 0:
             final = [x/size for x in final]
             print(f"Final weights are: {final}")
-            Y_test_predicted = np.array([])
-
-            for i in range(X_test.shape[0]):
-                yp = np.sign(np.dot(final, X_test.to_numpy()[i])) #model
-                Y_test_predicted = np.append(Y_test_predicted, yp)
+            
             stop = process_time()
-            accuracy = accuracy_score(Y_test.to_numpy(), Y_test_predicted)
-            recall = recall_score(Y_test.to_numpy(), Y_test_predicted)
-            precision = precision_score(Y_test.to_numpy(), Y_test_predicted)
-            print(f"Time taken: {stop-start}")
+            print(f"Time taken for training: {stop-start}")
+            Y_test_predicted = np.sign(np.dot(X_test.to_numpy(), W)) #model
+            Y_test = Y_test.to_numpy()
+            accuracy = accuracy_score(Y_test, Y_test_predicted)
+            recall = recall_score(Y_test, Y_test_predicted)
+            precision = precision_score(Y_test, Y_test_predicted)
             print(f"Accuracy on test dataset: {accuracy}")
             print(f"Recall on test dataset: {recall}")
             print(f"Precision on test dataset: {precision}")
