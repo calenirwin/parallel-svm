@@ -14,9 +14,12 @@ import math
 import numpy as np                                              # package for scientific computing
 import pandas as pd                                             # package for data analysis and manipulation
 import statsmodels.api as sm                                    # package for statistical modelling
+import matplotlib.pyplot as plt                                 # package for displaying confusion matrix
+import scikitplot as skplt                                      # package for generating confusion matrix
 from sklearn.preprocessing import MinMaxScaler                  # used to normalize data
 from sklearn.model_selection import train_test_split as tts     # used to divide training and test data
 from sklearn.metrics import accuracy_score, recall_score, precision_score        # used to get statistical information on the model's performance
+
 from sklearn.utils import shuffle                               # used to shuffle data before training
 from time import process_time                                   # used to time training and testing model
 
@@ -69,22 +72,29 @@ def init():
         W = sgd(X_train.to_numpy(), Y_train.to_numpy())
         print("training finished.")
         print("weights are: {}".format(W))
-        y_test_predicted = np.array([])
+        Y_test_predicted = np.array([])
 
         for i in range(X_test.shape[0]):
             yp = np.sign(np.dot(W, X_test.to_numpy()[i])) # model
-            y_test_predicted = np.append(y_test_predicted, yp)
+            Y_test_predicted = np.append(Y_test_predicted, yp)
         stop = process_time()
-        accuracy = accuracy_score(Y_test.to_numpy(), y_test_predicted)
-        recall = recall_score(Y_test.to_numpy(), y_test_predicted)
-        precision = precision_score(Y_test.to_numpy(), y_test_predicted)
+
+        Y_test = Y_test.to_numpy()
+
+        accuracy = accuracy_score(Y_test, Y_test_predicted)
+        recall = recall_score(Y_test, Y_test_predicted)
+        precision = precision_score(Y_test, Y_test_predicted)
+
         print(f"Time taken: {stop-start}")
         print(f"Accuracy on test dataset: {accuracy}")
         print(f"Recall on test dataset: {recall}")
         print(f"Precision on test dataset: {precision}")
-        # print(f"Area under Precision-Recall Curve: {auc(recall, precision)}")
+        
+        skplt.metrics.plot_confusion_matrix(Y_Test, Y_test_predicted, normalize=True)
+        plt.show()
     else:
         print("***Incorrect arguments, proper format >> py ./svm.py {data filename} {class label} {positive class value} {negative class value}")
+
 
 def compute_cost(W, X, Y):
     # calculate hinge loss
@@ -137,13 +147,6 @@ def sgd(features, outputs):
             nth += 1
     return weights
 
-def is_intstring(s):
-    try:
-        int(s)
-        return True
-    except ValueError:
-        return False
-
 def remove_correlated_features(X):
     corr_threshold = 0.9
     corr = X.corr()
@@ -155,6 +158,7 @@ def remove_correlated_features(X):
     columns_dropped = X.columns[drop_columns]
     X.drop(columns_dropped, axis=1, inplace=True)
     return columns_dropped
+
 def remove_less_significant_features(X, Y):
     sl = 0.05
     regression_ols = None
@@ -170,6 +174,14 @@ def remove_less_significant_features(X, Y):
             break
     regression_ols.summary()
     return columns_dropped
+
+def is_intstring(s):
+    try:
+        int(s)
+        return True
+    except ValueError:
+        return False
+
 
 reg_strength = 10000 # regularization strength
 learning_rate = 0.000001
