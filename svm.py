@@ -3,8 +3,7 @@
 # Last Modified Date: 2020-04-13
 # Purpose: Non-paralell implementation of a, SVM that uses SGD to compare with the results of our parallelized version.
 # Instructions for running: *depending on your version of Python use 'python' instead of 'py'*
-#   To run with MPI    >> 'mpiexec -n 4 py -m mpi4py psvm.py {inputfile.csv} {class_label} {+ve class value} {-ve class value}'
-#   To run without MPI >> 'py psvm.py'
+#   'python svm.py {inputfile.csv} {class_label} {+ve class value} {-ve class value}'
 # References: [0] https://towardsdatascience.com/svm-implementation-from-scratch-python-2db2fc52e5c2
 
 import sys # library for accessing command line arguments
@@ -75,10 +74,10 @@ def init():
         stop = process_time()
         print(f"Time taken for training: {stop-start}")
 
+        Y_test_predicted = np.sign(np.dot(X_test.to_numpy(), W)) # apply model to get predicted classes
+        Y_test = Y_test.to_numpy()                      # actual classes
         
-        Y_test_predicted = np.sign(np.dot(X_test.to_numpy(), W)) #model
-        Y_test = Y_test.to_numpy()
-
+        # calculate and output results
         accuracy = accuracy_score(Y_test, Y_test_predicted)
         recall = recall_score(Y_test, Y_test_predicted)
         precision = precision_score(Y_test, Y_test_predicted)
@@ -87,7 +86,7 @@ def init():
         print(f"Recall on test dataset: {recall}")
         print(f"Precision on test dataset: {precision}")
         
-        skplt.metrics.plot_confusion_matrix(Y_Test, Y_test_predicted, normalize=True)
+        skplt.metrics.plot_confusion_matrix(Y_test, Y_test_predicted, normalize=True)
         plt.show()
     else:
         print("***Incorrect arguments, proper format >> py ./svm.py {data filename} {class label} {positive class value} {negative class value}")
@@ -178,6 +177,7 @@ def remove_less_significant_features(X, Y):
     regression_ols.summary()
     return columns_dropped
 
+# convert to int if possible
 def is_intstring(s):
     try:
         int(s)
@@ -186,6 +186,6 @@ def is_intstring(s):
         return False
 
 
-reg_strength = 10000 # regularization strength
-learning_rate = 0.000001
-init()
+reg_strength = 10000        # regularization strength
+learning_rate = 0.000001    # learning rate
+init()                      # initialize the program

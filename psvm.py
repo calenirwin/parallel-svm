@@ -9,8 +9,7 @@
 #          class labels.
 #          
 # Instructions for running: *depending on your version of Python use 'python' instead of 'py'*
-#   To run with MPI    >> 'mpiexec -n 4 py -m mpi4py psvm.py {inputfile.csv} {class_label} {+ve class value} {-ve class value}'
-#   To run without MPI >> 'py psvm.py'
+#   To run with MPI    >> 'mpiexec -n {number of processes} py -m mpi4py psvm.py {inputfile.csv} {class_label} {+ve class value} {-ve class value}'
 # References: [0] https://towardsdatascience.com/svm-implementation-from-scratch-python-2db2fc52e5c2
 
 import sys  # library for accessing command line arguments
@@ -61,7 +60,6 @@ def init():
             cols = data.columns.tolist()
             cols.remove(class_label)
             X = data.loc[:, cols]
-            print(X.shape)
 
             # preprocessing of data to yield better results
             remove_correlated_features(X)  
@@ -111,7 +109,7 @@ def init():
         else:
             num_rows = None
             num_cols = None
-            split_size = None
+            split_sizes = None
             X_train = None
             Y_train = None
             final_weights = None
@@ -144,14 +142,13 @@ def init():
             final_weights = [x/size for x in final_weights]          # average weights 
             print(f"Final weights: {final_weights}")
 
-            Y_test_predicted = np.array([])                          # empty array to hold model predictions
-
             stop = process_time()                                    # stop timer
             print(f"Time taken for training: {stop - start}")
 
-            Y_test_predicted = np.sign(np.dot(X_test.to_numpy(), W)) # apply model to get predicted classes
+            Y_test_predicted = np.sign(np.dot(X_test.to_numpy(), final_weights)) # apply model to get predicted classes
             Y_test = Y_test.to_numpy()                               # actual classes
 
+            # calculate and output results
             accuracy = accuracy_score(Y_test, Y_test_predicted)
             recall = recall_score(Y_test, Y_test_predicted)
             precision = precision_score(Y_test, Y_test_predicted)
@@ -159,9 +156,8 @@ def init():
             print(f"Accuracy on test dataset: {accuracy}")
             print(f"Recall on test dataset: {recall}")
             print(f"Precision on test dataset: {precision}")
-            # print(f"Area under Precision-Recall Curve: {auc(recall, precision)}")
 
-            skplt.metrics.plot_confusion_matrix(Y_Test, Y_test_predicted, normalize=True)
+            skplt.metrics.plot_confusion_matrix(Y_test, Y_test_predicted, normalize=True)
             plt.show()
     else: 
         print("***Incorrect arguments, proper format: py ./psvm.py {data filename} {class label} {positive class value} {negative class value}")
@@ -254,7 +250,7 @@ def remove_less_significant_features(X, Y):
     regression_ols.summary()
     return columns_dropped
 
-# check command-line arguments
+# convert to int if possible
 def is_intstring(s):
     try:
         int(s)
