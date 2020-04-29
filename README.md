@@ -1,2 +1,2 @@
 # parallel-svm
-Implementation of a parallel SVM classifier for COIS-4350H
+Python implementation of a parallel SVM classifier using MPI
